@@ -1,10 +1,10 @@
 # Platonic Ideal
 
-A project for extracting token vectors from the DeepSeek-V3.2 model's embedding matrix.
+A proof-of-concept for extracting token vectors from language model embedding matrices without downloading the full model.
 
 ## Purpose
 
-This project enables efficient extraction of **non-contextual token embeddings** from the DeepSeek-V3.2 language model. Unlike contextual embeddings (which require a full forward pass through the model), token vectors are the raw, static representations stored in the model's embedding matrix—the "platonic ideal" of how each token is represented before any contextual processing.
+This project enables efficient extraction of **non-contextual token embeddings** from large language models (currently tested with Qwen/Qwen2.5-0.5B). Unlike contextual embeddings (which require a full forward pass through the model), token vectors are the raw, static representations stored in the model's embedding matrix—the "platonic ideal" of how each token is represented before any contextual processing.
 
 ### What are Token Vectors?
 
@@ -19,22 +19,88 @@ These vectors are useful for:
 - Building lightweight token-based features without running the full model
 - Research into embedding space geometry
 
-### Why DeepSeek-V3.2?
+## How It Works
 
-DeepSeek-V3.2 is a state-of-the-art language model with a large vocabulary and high-dimensional embeddings. Extracting its token vectors provides insights into how modern language models represent tokens at their most fundamental level.
+Rather than loading entire multi-GB models, this project:
+1. **Detects** whether the model uses sharded or single-file safetensors format
+2. **Downloads** only the embedding matrix (not the full model weights)
+3. **Loads** embeddings efficiently on CPU using memory-mapped files
+4. **Extracts** token vectors for text or token IDs
+5. **Converts** special formats (like bfloat16) to standard float32 numpy arrays
 
-## Approach
+For Qwen/Qwen2.5-0.5B:
+- Full model: ~1GB
+- Just embeddings: Same file (single safetensors), but loaded efficiently
+- Vocabulary size: 151,936 tokens
+- Embedding dimension: 896
 
-Rather than loading the entire 690GB model, this project focuses on **efficiently loading only the embedding matrix** from the sharded model files. This allows for:
-- Minimal disk space usage
-- Fast access to token vectors
-- No need for GPU resources (embeddings can be loaded on CPU)
+## Installation
 
-## Status
+1. Create a virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-This project is in development. The goal is to provide a clean interface for:
-1. Downloading only the necessary model shard containing embeddings
-2. Loading the embedding matrix efficiently
-3. Extracting token vectors for any given text or token IDs
-4. Performing basic operations on token vectors (similarity, clustering, etc.)
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+## Usage
+
+### Extract embeddings for specific token IDs
+
+```bash
+python extract_embeddings.py --token-id 100
+```
+
+Output:
+```
+Token ID: 100
+Vector shape: (896,)
+Vector (first 20 dims): [-0.01177979  0.03857422  0.03979492 ...]
+Vector statistics:
+  Mean: -0.000764
+  Std: 0.016586
+  Min: -0.049072
+  Max: 0.048828
+```
+
+### Extract embeddings for text
+
+```bash
+python extract_embeddings.py --text "Hello world"
+```
+
+Output:
+```
+Input text: Hello world
+Token IDs: [9707, 1879]
+Number of tokens: 2
+Embedding shape: (2, 896)
+
+Token breakdown:
+  Token 0: 'Hello' (ID: 9707)
+    Vector (first 10 dims): [-2.5146484e-02  5.5541992e-03 ...]
+  Token 1: ' world' (ID: 1879)
+    Vector (first 10 dims): [ 0.00830078 -0.00072479 ...]
+```
+
+### Use a different model
+
+```bash
+python extract_embeddings.py --repo-id "Qwen/Qwen2.5-1.5B" --text "Hello"
+```
+
+## What's Next
+
+This is a minimal proof-of-concept. Future enhancements could include:
+- Package structure for easy installation
+- Vector similarity and clustering operations
+- Support for more model architectures
+- Efficient nearest-neighbor search with FAISS
+- CLI improvements with better output formatting
+- API for programmatic access
 
