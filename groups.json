@@ -1,0 +1,20 @@
+{
+  "repo_id": "Qwen/Qwen2.5-0.5B",
+  "groups": [
+    {
+      "name": "space",
+      "weight": 1.0,
+      "entries": [
+        "planet",
+        "star",
+        "sun",
+        "earth",
+        "galaxy",
+        "solar system",
+        "orbit",
+        "astronomy",
+        "moon"
+      ]
+    }
+  ]
+}
