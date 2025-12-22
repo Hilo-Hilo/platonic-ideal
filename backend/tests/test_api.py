@@ -10,3 +10,4 @@ def test_health_check():
     assert data["status"] == "ok"
     assert "available_models" in data
 
+
