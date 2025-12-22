@@ -432,6 +432,90 @@ for i, w in enumerate(d['_output']['top_words'], 1):
 PY
 ```
 
+## Backend API (FastAPI)
+
+This repository includes a minimal backend service that exposes the essence computation as JSON APIs. It **loads models on-demand per request** (no RAM cache) and defaults to the best-performing model from tests: **TinyLlama/TinyLlama-1.1B-Chat-v1.0**.
+
+### Endpoints
+- `GET /health` — health check, returns available models
+- `POST /compute-essence` — main endpoint: compute essence and nearest WordNet words
+
+### Session concurrency + model limits (scalability)
+To keep the service scalable and prevent a single user (or many browser tabs) from overloading the backend:
+
+- **One in-flight request per user session**: the frontend sends an `X-Session-ID` header (stored in `localStorage`, shared across tabs). The backend rejects concurrent requests for the same session with **HTTP 429**.
+- **Max 3 models per request**: the backend enforces `len(model_ids) <= 3` and the UI prevents selecting more than 3 models at once.
+
+Locking backend implementation:
+- If `REDIS_URL` is set, the backend uses a **Redis distributed lock** (recommended for multiple instances).
+- Otherwise it falls back to an in-process lock (OK for local dev).
+
+### Run locally (dev)
+```bash
+source venv/bin/activate
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+> If the frontend shows “Cannot connect to backend” but `curl http://localhost:8001/health` works, your browser may be resolving `localhost` to IPv6 (`::1`) while `uvicorn --host 0.0.0.0` only listens on IPv4.  
+> Fix: use `http://127.0.0.1:8001` (the frontend defaults to this), or run uvicorn with an IPv6 host (e.g. `--host ::`) if that fits your environment.
+
+### Docker (production-style)
+```bash
+docker build -t platonic-ideal-api .
+docker run -p 8001:8001 platonic-ideal-api
+```
+
+### Request/Response (compute-essence)
+**Request**
+```json
+{
+  "model_ids": ["tinyllama-1.1b", "qwen-0.5b"],
+  "groups": [
+    { "name": "space", "weight": 1.0, "entries": ["planet", "star", "sun", "galaxy", "orbit", "astronomy"] }
+  ],
+  "options": {
+    "top_k": 20,
+    "wordnet_pos": "n,v",
+    "exclude_input": true,
+    "exclude_substrings": true,
+    "min_word_chars": 3,
+    "max_token_len": 6
+  }
+}
+```
+
+**Response** (truncated)
+```json
+{
+  "model_ids": ["tinyllama-1.1b", "qwen-0.5b"],
+  "results": {
+    "tinyllama-1.1b": { "...": "full per-model result (same shape as CLI output)" },
+    "qwen-0.5b": { "...": "full per-model result" }
+  },
+  "errors": {},
+  "timing_s": 2.7,
+  "per_model_timing_s": { "tinyllama-1.1b": 1.8, "qwen-0.5b": 0.9 }
+}
+```
+
+### Input validation defaults
+- Max groups: 10
+- Max entries per group: 50
+- Max entry length: 100 chars
+- `top_k`: 1..100
+- WordNet POS: `n,v,a,r,s` (default `n,v`)
+
+### Model IDs available
+- `tinyllama-1.1b` (default) → `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
+- `qwen-0.5b` → `Qwen/Qwen2.5-0.5B`
+- `qwen-1.5b` → `Qwen/Qwen2.5-1.5B`
+- `qwen-3b` → `Qwen/Qwen2.5-3B`
+- `qwen-7b` → `Qwen/Qwen2.5-7B`
+- `phi-2` → `microsoft/phi-2`
+- `gemma-2b` → `google/gemma-2b`
+
+> Note: Models are loaded on-demand per request. TinyLlama runs in ~1.8s; larger models can take >2 minutes. For production, consider caching if acceptable, but this API intentionally avoids persistent RAM cache per your requirement.
+
 ## Understanding the Results
 
 ### What Does the Essence Vector Represent?
