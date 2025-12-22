@@ -17,11 +17,12 @@ RUN pip install --no-cache-dir -r /app/requirements.txt && \
 COPY . /app
 
 # Download WordNet data at build time to avoid runtime downloads
-RUN python - <<'PY'\nimport nltk\nnltk.download('wordnet', quiet=True)\nnltk.download('omw-1.4', quiet=True)\nprint('WordNet data downloaded')\nPY
+RUN python -c "import nltk; nltk.download('wordnet', quiet=True); nltk.download('omw-1.4', quiet=True); print('WordNet data downloaded')"
 
 EXPOSE 8000
 
 ENV PYTHONPATH=/app
+ENV PORT=8000
 
-CMD [\"uvicorn\", \"backend.app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n
-
+# Using shell form to expand $PORT which Railway provides
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"]

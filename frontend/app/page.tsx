@@ -74,15 +74,13 @@ interface ComputeResult {
   };
 }
 
-const MODELS = [
-  { id: "tinyllama-1.1b", name: "TinyLlama 1.1B (Recommended)", repo_id: "TinyLlama/TinyLlama-1.1B-Chat-v1.0", speed: "fast" },
-  { id: "qwen-0.5b", name: "Qwen 0.5B", repo_id: "Qwen/Qwen2.5-0.5B", speed: "fast" },
-  { id: "qwen-1.5b", name: "Qwen 1.5B", repo_id: "Qwen/Qwen2.5-1.5B", speed: "medium" },
-  { id: "qwen-3b", name: "Qwen 3B", repo_id: "Qwen/Qwen2.5-3B", speed: "slow" },
-  { id: "qwen-7b", name: "Qwen 7B (Large)", repo_id: "Qwen/Qwen2.5-7B", speed: "very slow" },
-  { id: "phi-2", name: "Phi-2 2.7B", repo_id: "microsoft/phi-2", speed: "slow" },
-  { id: "gemma-2b", name: "Gemma 2B", repo_id: "google/gemma-2b", speed: "medium" },
-];
+interface ModelInfo {
+  id: string;
+  name: string;
+  repo_id: string;
+  speed: string;
+  description: string;
+}
 
 const DEFAULT_GROUP: Group = {
   id: "default-1",
@@ -232,11 +230,12 @@ function SortableGroupCard({
 }
 
 export default function Home() {
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [groups, setGroups] = useState<Group[]>([DEFAULT_GROUP]);
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set(["tinyllama-1.1b"]));
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [topK, setTopK] = useState<number>(20);
   const [results, setResults] = useState<Map<string, ComputeResult>>(new Map());
-  const [activeResultTab, setActiveResultTab] = useState<string>("tinyllama-1.1b");
+  const [activeResultTab, setActiveResultTab] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [loadingModels, setLoadingModels] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -282,6 +281,31 @@ export default function Home() {
       setShowOnboarding(true);
       localStorage.setItem("hasSeenOnboarding", "true");
     }
+
+    // Fetch allowed models from backend
+    const apiBaseUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://127.0.0.1:8000";
+
+    fetch(`${apiBaseUrl}/health`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.available_models) {
+          setModels(data.available_models);
+          // Auto-select default model if valid
+          if (data.default_model_id && data.available_models.some((m: ModelInfo) => m.id === data.default_model_id)) {
+            setSelectedModels(new Set([data.default_model_id]));
+            setActiveResultTab(data.default_model_id);
+          } else if (data.available_models.length > 0) {
+            setSelectedModels(new Set([data.available_models[0].id]));
+            setActiveResultTab(data.available_models[0].id);
+          }
+        }
+      })
+      .catch(err => {
+        console.error("Failed to fetch models:", err);
+        setError("Could not load available models from server.");
+      });
+
   }, []);
 
   const addGroup = () => {
@@ -367,7 +391,7 @@ export default function Home() {
     setLoadingModels(new Set(selectedModels));
 
     const apiBaseUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://127.0.0.1:8001";
+      process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://127.0.0.1:8000";
 
     const payload = {
       model_ids: Array.from(selectedModels),
@@ -606,7 +630,10 @@ export default function Home() {
                       Models to Analyze
                     </label>
                     <div className="space-y-3">
-                      {MODELS.map((model) => (
+                      {models.length === 0 ? (
+                         <div className="text-sm text-slate-500 italic">Loading models...</div>
+                      ) : (
+                        models.map((model) => (
                         <div key={model.id} className="flex items-start space-x-3">
                           <Checkbox
                             id={`model-${model.id}`}
@@ -624,7 +651,7 @@ export default function Home() {
                             </div>
                           </label>
                         </div>
-                      ))}
+                      )))}
                     </div>
                     <p className="text-xs text-slate-500">
                       {selectedModels.size} model{selectedModels.size !== 1 ? "s" : ""} selected
@@ -660,7 +687,7 @@ export default function Home() {
                   <Tabs value={activeResultTab} onValueChange={setActiveResultTab}>
                     <TabsList className="w-full flex">
                       {Array.from(results.keys()).map((modelId) => {
-                        const model = MODELS.find(m => m.id === modelId);
+                        const model = models.find(m => m.id === modelId);
                         const modelName = model?.name || modelId;
                         // Extract first part for tab label
                         const shortName = modelName.split(" ")[0];

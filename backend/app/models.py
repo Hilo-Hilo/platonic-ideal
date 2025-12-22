@@ -51,8 +51,15 @@ class ComputeEssenceRequest(BaseModel):
     options: ComputeOptions = Field(default_factory=ComputeOptions)
 
 
+class ModelInfo(BaseModel):
+    id: str
+    name: str
+    repo_id: str
+    speed: str
+    description: str
+
 class HealthResponse(BaseModel):
     status: str
     default_model_id: str
-    available_models: List[str]
+    available_models: List[ModelInfo]
 
