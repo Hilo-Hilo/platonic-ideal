@@ -3,3 +3,21 @@
 
 # Ignore venv
 venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node
+node_modules/
+.next/
+out/
+.vercel/
+
+# Environment
+.env
+.env.local
+.env.*.local

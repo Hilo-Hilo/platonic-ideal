@@ -350,40 +350,85 @@ Memory usage:
 
 ## Installation
 
-### 1. Create Virtual Environment
+### Backend Setup
+
+1. **Create Virtual Environment**:
 ```bash
-cd /home/hansonwen/platonic-ideal
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-### 2. Install Python Dependencies
+2. **Install Python Dependencies**:
 ```bash
 pip install -r requirements.txt
-pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r backend/requirements-backend.txt
 ```
 
-Dependencies:
-- `huggingface_hub` - Download model files from Hugging Face
-- `safetensors` - Load embedding weights
-- `transformers` - Tokenizer
-- `numpy` - Vector operations
-- `nltk` - WordNet lexical database
-- `torch` - Handle bfloat16 tensors (CPU-only)
+Key dependencies:
+- `transformers>=4.40.0` + `tokenizers>=0.19.1` - Model tokenizers
+- `torch>=2.2.0` - Handle bfloat16 tensors (CPU-only)
+- `numpy<2.0.0` - Vector operations (pinned for compatibility)
+- `fastapi` + `uvicorn` - Web API framework
+- `nltk>=3.9.1` + `wordfreq>=3.1.1` - Dictionary data
 
-### 3. Download WordNet Data (one-time)
+3. **Download WordNet Data** (one-time):
 ```bash
-python - <<'PY'
-import nltk
-nltk.download('wordnet', quiet=True)
-nltk.download('omw-1.4', quiet=True)
-print("WordNet data downloaded successfully")
-PY
+python -m nltk.downloader wordnet omw-1.4
 ```
+
+### Frontend Setup
+
+1. **Install Node.js Dependencies**:
+```bash
+cd frontend
+npm install
+```
+
+Key dependencies:
+- `next@16.1.0` + `react@19` - Framework
+- `@dnd-kit/*` - Drag-and-drop groups
+- `@radix-ui/*` - UI components (shadcn/ui)
+- `tailwindcss@4` - Styling
+
+## Configuration (Environment Variables)
+
+### Backend Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_MODELS` | `tinyllama-1.1b,qwen-0.5b` | Comma-separated list of allowed model IDs |
+| `PORT` | `8000` | Server port (Railway uses dynamic `$PORT`) |
+| `ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | CORS allowed origins |
+| `REDIS_URL` | (none) | Redis connection string for distributed session locking |
+| `PLATONIC_SESSION_LOCK_TTL_SECONDS` | `1200` | Session lock timeout (20 minutes) |
+
+### Frontend Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_API_BASE_URL` | `http://127.0.0.1:8000` | Backend API URL (must be set for production) |
 
 ## Quick Start
 
-### Extract Token Embeddings
+### Option 1: Run the Web App (Recommended)
+
+**Backend**:
+```bash
+source venv/bin/activate
+PYTHONPATH=. uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Frontend** (in another terminal):
+```bash
+cd frontend
+npm run dev
+```
+
+Visit: `http://localhost:3000`
+
+### Option 2: CLI Usage
+
+#### Extract Token Embeddings
 
 Get the embedding vector for a specific token ID:
 ```bash
@@ -395,7 +440,7 @@ Get embeddings for text (shows tokenization + vectors):
 python extract_embeddings.py --text "Hello world"
 ```
 
-### Compute Word-Group Essence
+#### Compute Word-Group Essence
 
 1. Create `groups.json`:
 ```json
@@ -432,37 +477,125 @@ for i, w in enumerate(d['_output']['top_words'], 1):
 PY
 ```
 
-## Backend API (FastAPI)
+## Full-Stack Application
 
-This repository includes a minimal backend service that exposes the essence computation as JSON APIs. It **loads models on-demand per request** (no RAM cache) and defaults to the best-performing model from tests: **TinyLlama/TinyLlama-1.1B-Chat-v1.0**.
+This repository includes a **production-ready web application** with:
+- **Backend (FastAPI)**: Exposes essence computation as JSON APIs
+- **Frontend (Next.js)**: Beautiful, interactive UI for word-group exploration
+- **CI/CD Pipeline**: Automated testing via GitHub Actions
+- **Deployment**: Ready for Railway (backend) + Vercel (frontend)
 
-### Endpoints
-- `GET /health` — health check, returns available models
-- `POST /compute-essence` — main endpoint: compute essence and nearest WordNet words
+### Architecture
 
-### Session concurrency + model limits (scalability)
-To keep the service scalable and prevent a single user (or many browser tabs) from overloading the backend:
-
-- **One in-flight request per user session**: the frontend sends an `X-Session-ID` header (stored in `localStorage`, shared across tabs). The backend rejects concurrent requests for the same session with **HTTP 429**.
-- **Max 3 models per request**: the backend enforces `len(model_ids) <= 3` and the UI prevents selecting more than 3 models at once.
-
-Locking backend implementation:
-- If `REDIS_URL` is set, the backend uses a **Redis distributed lock** (recommended for multiple instances).
-- Otherwise it falls back to an in-process lock (OK for local dev).
-
-### Run locally (dev)
-```bash
-source venv/bin/activate
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+Frontend (Next.js)          Backend (FastAPI)           Models (On-Demand)
+┌─────────────────┐        ┌──────────────────┐        ┌─────────────────┐
+│ React UI        │──HTTP──│ /health          │        │ TinyLlama 1.1B  │
+│ Word Groups     │        │ /compute-essence │───────▶│ Qwen 0.5B       │
+│ Model Selection │        │ Session Lock     │        │ (Downloads      │
+│ Results Display │        │ CORS             │        │  on first use)  │
+└─────────────────┘        └──────────────────┘        └─────────────────┘
 ```
 
-> If the frontend shows “Cannot connect to backend” but `curl http://localhost:8001/health` works, your browser may be resolving `localhost` to IPv6 (`::1`) while `uvicorn --host 0.0.0.0` only listens on IPv4.  
-> Fix: use `http://127.0.0.1:8001` (the frontend defaults to this), or run uvicorn with an IPv6 host (e.g. `--host ::`) if that fits your environment.
+### Key Features
 
-### Docker (production-style)
+**Backend**:
+- **Model Allowlist**: Configure which models are available via `ALLOWED_MODELS` env var (defaults to `tinyllama-1.1b,qwen-0.5b`)
+- **Session Locking**: Prevents concurrent requests per user (uses Redis if available, or in-memory fallback)
+- **Dynamic CORS**: Configurable via `ALLOWED_ORIGINS` for production domains
+- **On-Demand Loading**: Models load only when requested (no persistent RAM cache)
+
+**Frontend**:
+- **Dynamic Model Discovery**: Fetches available models from backend `/health` endpoint
+- **Drag-and-Drop Groups**: Reorder word groups with visual feedback
+- **Multi-Model Comparison**: Analyze with up to 3 models simultaneously
+- **Responsive Design**: Built with Tailwind CSS and shadcn/ui components
+
+### Run Locally
+
+**Backend** (Terminal 1):
 ```bash
-docker build -t platonic-ideal-api .
-docker run -p 8001:8001 platonic-ideal-api
+source venv/bin/activate
+ALLOWED_MODELS="tinyllama-1.1b,qwen-0.5b" PYTHONPATH=. uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Frontend** (Terminal 2):
+```bash
+cd frontend
+npm install  # First time only
+npm run dev
+```
+
+Then visit: `http://localhost:3000`
+
+> **Note**: Backend defaults to port 8000, frontend defaults to `http://127.0.0.1:8000` for API calls.
+
+### Deploy to Production
+
+**Backend → Railway**:
+1. Connect your GitHub repo to Railway
+2. Railway auto-detects the `Dockerfile`
+3. Set environment variables:
+   ```
+   ALLOWED_MODELS=tinyllama-1.1b,qwen-0.5b
+   PORT=8000
+   ALLOWED_ORIGINS=https://your-frontend.vercel.app
+   ```
+4. Deploy! (First build takes ~5-10 min to download models)
+
+**Frontend → Vercel**:
+1. Connect your GitHub repo to Vercel
+2. Set **Root Directory**: `frontend`
+3. Add environment variable:
+   ```
+   NEXT_PUBLIC_API_BASE_URL=https://your-backend.up.railway.app
+   ```
+4. Deploy!
+
+**Auto-Deploy**: Both platforms automatically deploy on every push to `main`. GitHub Actions runs tests first to catch errors.
+
+### API Endpoints
+
+#### `GET /health`
+Returns server status and available models.
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "default_model_id": "tinyllama-1.1b",
+  "available_models": [
+    {
+      "id": "tinyllama-1.1b",
+      "name": "TinyLlama 1.1B (Recommended)",
+      "repo_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "speed": "fast",
+      "description": "TinyLlama 1.1B (best balance of quality/speed from tests)"
+    }
+  ]
+}
+```
+
+#### `POST /compute-essence`
+Computes word-group essence and returns nearest dictionary words.
+
+**Headers**:
+- `X-Session-ID`: Required (prevents concurrent requests per session)
+
+**Request Body**:
+```json
+{
+  "model_ids": ["tinyllama-1.1b"],
+  "groups": [
+    { "name": "space", "weight": 1.0, "entries": ["planet", "star", "sun", "galaxy"] }
+  ],
+  "options": {
+    "top_k": 20,
+    "wordnet_pos": "n,v",
+    "exclude_input": true,
+    "exclude_substrings": true
+  }
+}
 ```
 
 ### Request/Response (compute-essence)
@@ -505,16 +638,71 @@ docker run -p 8001:8001 platonic-ideal-api
 - `top_k`: 1..100
 - WordNet POS: `n,v,a,r,s` (default `n,v`)
 
-### Model IDs available
-- `tinyllama-1.1b` (default) → `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
-- `qwen-0.5b` → `Qwen/Qwen2.5-0.5B`
-- `qwen-1.5b` → `Qwen/Qwen2.5-1.5B`
-- `qwen-3b` → `Qwen/Qwen2.5-3B`
-- `qwen-7b` → `Qwen/Qwen2.5-7B`
-- `phi-2` → `microsoft/phi-2`
-- `gemma-2b` → `google/gemma-2b`
+### Available Models
 
-> Note: Models are loaded on-demand per request. TinyLlama runs in ~1.8s; larger models can take >2 minutes. For production, consider caching if acceptable, but this API intentionally avoids persistent RAM cache per your requirement.
+The backend supports 7 models (configured in `backend/app/config.py`):
+
+| Model ID | Name | Repo ID | Speed | RAM (Est.) |
+|----------|------|---------|-------|------------|
+| `tinyllama-1.1b` | TinyLlama 1.1B (Recommended) | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | fast | ~250MB |
+| `qwen-0.5b` | Qwen 0.5B | `Qwen/Qwen2.5-0.5B` | fast | ~550MB |
+| `qwen-1.5b` | Qwen 1.5B | `Qwen/Qwen2.5-1.5B` | medium | ~800MB |
+| `qwen-3b` | Qwen 3B | `Qwen/Qwen2.5-3B` | slow | ~1.5GB |
+| `qwen-7b` | Qwen 7B (Large) | `Qwen/Qwen2.5-7B` | very slow | ~3GB |
+| `phi-2` | Phi-2 2.7B | `microsoft/phi-2` | slow | ~1GB |
+| `gemma-2b` | Gemma 2B | `google/gemma-2b` | medium | ~900MB |
+
+**Model Filtering**: Use the `ALLOWED_MODELS` environment variable to control which models are available:
+```bash
+# Only allow lightweight models (default for production)
+export ALLOWED_MODELS="tinyllama-1.1b,qwen-0.5b"
+
+# Allow all models (requires more RAM)
+export ALLOWED_MODELS="tinyllama-1.1b,qwen-0.5b,qwen-1.5b,qwen-3b,qwen-7b,phi-2,gemma-2b"
+```
+
+The frontend dynamically fetches the allowed models from the backend's `/health` endpoint, so no frontend changes are needed.
+
+> **Note**: Models are loaded on-demand per request. First run downloads the model files from Hugging Face. Subsequent runs use the cached files.
+
+## CI/CD Pipeline
+
+This project includes automated testing via **GitHub Actions** (`.github/workflows/ci.yml`).
+
+### What Gets Tested
+
+Every push to `main` triggers three parallel jobs:
+
+1. **Backend Tests** (Python)
+   - Lints code with `flake8`
+   - Runs `pytest` tests
+   - Downloads NLTK data
+   - Validates Python 3.11 compatibility
+
+2. **Frontend Tests** (Next.js)
+   - Lints code with ESLint
+   - Type-checks with TypeScript
+   - Builds production bundle
+   - Validates Node.js 20 compatibility
+
+3. **Docker Build** (on PRs only)
+   - Validates `Dockerfile` and `frontend/Dockerfile`
+   - Ensures deployment readiness
+
+### Viewing CI Results
+
+Visit: `https://github.com/YOUR-USERNAME/platonic-ideal/actions`
+
+- ✅ Green checkmark = All tests passed
+- ❌ Red X = Tests failed (click for details)
+
+### Deployment Triggers
+
+- **Railway**: Auto-deploys backend on every push to `main`
+- **Vercel**: Auto-deploys frontend on every push to `main`
+- **Safeguard**: If CI tests fail, deployment proceeds anyway (Railway/Vercel don't block on GitHub Actions)
+
+For maximum safety, enable "Required Status Checks" in GitHub repository settings to block merges if CI fails.
 
 ## Understanding the Results
 
@@ -558,23 +746,59 @@ If top words seem off:
 4. **Increase `--top-k`** to see more candidates (e.g., 50)
 5. **Check your input words** - ensure they're semantically coherent within each group
 
-## Files in This Repository
+## Project Structure
 
-### Core Scripts
-- **`extract_embeddings.py`** - Base functionality: download and load embedding matrix, extract token vectors
-- **`word_group_essence_wordnet.py`** - Main method: compute word-group essence and find nearest dictionary words
+```
+platonic-ideal/
+├── backend/                    # FastAPI backend
+│   ├── app/
+│   │   ├── main.py            # API endpoints + CORS
+│   │   ├── config.py          # Model registry + allowlist
+│   │   ├── models.py          # Pydantic schemas
+│   │   ├── compute.py         # Essence computation logic
+│   │   └── session_lock.py    # Redis/in-memory session locking
+│   ├── tests/
+│   │   └── test_api.py        # Pytest tests
+│   └── requirements-backend.txt
+│
+├── frontend/                   # Next.js frontend
+│   ├── app/
+│   │   ├── page.tsx           # Main UI component
+│   │   ├── layout.tsx         # App layout
+│   │   └── globals.css        # Global styles
+│   ├── components/ui/         # shadcn/ui components
+│   ├── package.json
+│   └── Dockerfile             # Frontend container
+│
+├── extract_embeddings.py      # CLI: Extract token embeddings
+├── word_group_essence_wordnet.py  # CLI: Compute essence (WordNet)
+├── test_models.py             # CLI: Compare multiple models
+├── requirements.txt           # Python dependencies
+├── Dockerfile                 # Backend container
+├── docker-compose.yml         # Local multi-service setup
+└── .github/workflows/ci.yml   # CI/CD pipeline
+```
 
-### Configuration Files
-- **`requirements.txt`** - Python package dependencies
-- **`groups.json`** - Example input (user-editable)
+### Key Files
 
-### Output Files (generated)
-- **`groups.out.json`** - Computed results with top words
-- **`groups.wordnet.out.json`** - Same (if you use different output names)
+**Core Scripts**:
+- `extract_embeddings.py` - Download and load embedding matrices
+- `word_group_essence_wordnet.py` - Compute essence + find nearest words
+- `test_models.py` - Compare results across models
 
-### Infrastructure
-- **`venv/`** - Python virtual environment (gitignored)
-- **`.gitignore`** - Excludes venv, cache, temporary files
+**Backend**:
+- `backend/app/main.py` - API server with CORS and session locking
+- `backend/app/config.py` - Model registry and `ALLOWED_MODELS` filtering
+- `backend/app/compute.py` - Async essence computation wrapper
+
+**Frontend**:
+- `frontend/app/page.tsx` - React UI with drag-and-drop groups
+- `frontend/components/ui/` - Reusable UI components (buttons, cards, sliders)
+
+**Deployment**:
+- `Dockerfile` - Backend container (Railway)
+- `frontend/Dockerfile` - Frontend container (multi-stage build)
+- `docker-compose.yml` - Run both services locally with Docker
 
 ## Limitations
 
