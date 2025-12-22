@@ -6,15 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -64,13 +57,13 @@ interface ComputeResult {
       embedding_dim: number;
       vocab_size: number;
     };
-    settings: any;
-    groups: any[];
+    settings: Record<string, unknown>;
+    groups: Array<Record<string, unknown>>;
     top_words: TopWord[];
     overall: {
       norm: number;
     };
-    wordnet_stats?: any;
+    wordnet_stats?: Record<string, unknown>;
   };
 }
 
@@ -237,7 +230,6 @@ export default function Home() {
   const [results, setResults] = useState<Map<string, ComputeResult>>(new Map());
   const [activeResultTab, setActiveResultTab] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [loadingModels, setLoadingModels] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -388,7 +380,6 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResults(new Map());
-    setLoadingModels(new Set(selectedModels));
 
     const apiBaseUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://127.0.0.1:8000";
@@ -467,7 +458,6 @@ export default function Home() {
       }
     } finally {
       setLoading(false);
-      setLoadingModels(new Set());
     }
   };
 
@@ -489,9 +479,9 @@ export default function Home() {
               <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg space-y-2">
                 <p className="font-semibold">How it works:</p>
                 <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Create <strong>word groups</strong> with related concepts (e.g., "space", "ocean")</li>
+                  <li>Create <strong>word groups</strong> with related concepts (e.g., &ldquo;space&rdquo;, &ldquo;ocean&rdquo;)</li>
                   <li>Assign <strong>weights</strong> to emphasize or de-emphasize each group</li>
-                  <li>Click <strong>Analyze</strong> to compute the mathematical "essence" vector</li>
+                  <li>Click <strong>Analyze</strong> to compute the mathematical &ldquo;essence&rdquo; vector</li>
                   <li>See which <strong>dictionary words</strong> are most aligned with your essence</li>
                 </ol>
               </div>
@@ -797,13 +787,13 @@ export default function Home() {
               <div className="space-y-3">
                 <h3 className="font-semibold text-base">What Are Weights?</h3>
                 <p>
-                  <strong>Positive weights</strong> (like 1.0) pull the result <em>toward</em> that group's meaning.
+                  <strong>Positive weights</strong> (like 1.0) pull the result <em>toward</em> that group&apos;s meaning.
                 </p>
                 <p>
                   <strong>Negative weights</strong> (like -0.5) push the result <em>away</em> from that group.
                 </p>
                 <p>
-                  <strong>Example</strong>: If you have "nature" (weight: 1.0) and "urban" (weight: -0.5), 
+                  <strong>Example</strong>: If you have &ldquo;nature&rdquo; (weight: 1.0) and &ldquo;urban&rdquo; (weight: -0.5), 
                   the result will favor wilderness-related words and avoid city-related words.
                 </p>
               </div>
@@ -819,7 +809,7 @@ export default function Home() {
                 </div>
                 <p className="text-xs text-slate-500">
                   This uses non-contextual token embeddings. 
-                  See the full mathematical details in the{" "}
+                  See the full mathematical details in the 
                   <a 
                     href="https://github.com/Hilo-Hilo/platonic-ideal" 
                     target="_blank"

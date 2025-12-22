@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, conint, constr, validator
+from pydantic import BaseModel, Field, conint, constr, field_validator
 
 
 class WordGroup(BaseModel):
@@ -8,8 +8,8 @@ class WordGroup(BaseModel):
     weight: float = 1.0
     entries: List[constr(strip_whitespace=True, min_length=1, max_length=100)] = Field(
         ...,
-        min_items=1,
-        max_items=50,
+        min_length=1,
+        max_length=50,
         description="List of words/phrases in the group (max 50, max 100 chars each)",
     )
 
@@ -24,7 +24,8 @@ class ComputeOptions(BaseModel):
     candidate_batch: conint(ge=256, le=32768) = 4096
     weight_clip_abs: Optional[float] = 32.0
 
-    @validator("wordnet_pos")
+    @field_validator("wordnet_pos")
+    @classmethod
     def validate_pos(cls, v: str) -> str:
         allowed = {"n", "v", "a", "r", "s"}
         parts = [p.strip().lower() for p in v.split(",") if p.strip()]
@@ -40,14 +41,14 @@ class ComputeEssenceRequest(BaseModel):
     # Preferred: batch request (max 3 models)
     model_ids: Optional[List[constr(strip_whitespace=True, min_length=1)]] = Field(
         None,
-        max_items=3,
+        max_length=3,
         description="Model ids to run (max 3). If omitted, falls back to model_id or default.",
     )
     # Backwards-compatible single model
     model_id: Optional[str] = Field(
         None, description="Single model id (deprecated). Use model_ids instead."
     )
-    groups: List[WordGroup] = Field(..., min_items=1, max_items=10)
+    groups: List[WordGroup] = Field(..., min_length=1, max_length=10)
     options: ComputeOptions = Field(default_factory=ComputeOptions)
 
 
