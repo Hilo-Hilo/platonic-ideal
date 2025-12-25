@@ -3,8 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.config import MODEL_REGISTRY, DEFAULT_MODEL
-from backend.app.compute import compute_essence_payload
-from backend.app.models import ComputeEssenceRequest, HealthResponse, ModelInfo
+from backend.app.compute import (
+    compute_essence_payload,
+    compute_essence_payload_v2,
+    compute_essence_payload_v21,
+    compute_essence_payload_v22,
+)
+from backend.app.models import (
+    ComputeEssenceRequest,
+    ComputeEssenceRequestV2,
+    ComputeEssenceRequestV21,
+    ComputeEssenceRequestV22,
+    HealthResponse,
+    ModelInfo,
+)
 from backend.app.session_lock import SessionBusyError, session_lock
 
 import os
@@ -22,8 +34,8 @@ ALLOWED_REGISTRY = {
 
 app = FastAPI(
     title="Word-Group Essence API",
-    version="0.1.0",
-    description="Compute word-group essence vectors and return nearest WordNet dictionary words.",
+    version="2.2.0",
+    description="Compute word-group essence vectors and return nearest WordNet dictionary words. Production uses v2.2 with advanced mathematical improvements for best semantic quality.",
 )
 
 import os
@@ -102,6 +114,143 @@ async def compute_essence(
     try:
         async with session_lock(x_session_id):
             result = await compute_essence_payload(payload)
+        return JSONResponse(result)
+    except SessionBusyError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/compute-essence-v2")
+async def compute_essence_v2(
+    req: ComputeEssenceRequestV2,
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
+    """
+    V2 endpoint with mathematical improvements:
+    - Spherical averaging (normalize-then-average)
+    - Per-group scoring (prevents positive/negative cancellation)
+    - All-but-the-Top anisotropy correction (mean subtraction + PC removal)
+    """
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="Missing X-Session-ID header")
+
+    # Normalize requested models (max 3)
+    if req.model_ids is not None:
+        model_ids = req.model_ids
+    else:
+        model_ids = [req.model_id or DEFAULT_MODEL.id]
+
+    # Validate against allowed list
+    for mid in model_ids:
+        if mid not in ALLOWED_REGISTRY:
+             raise HTTPException(status_code=403, detail=f"Model '{mid}' is not available on this server.")
+
+    if len(model_ids) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 models per request")
+
+    # Build payload dict (Pydantic → dict)
+    payload = {
+        "model_ids": model_ids,
+        "groups": [g.dict() for g in req.groups],
+        "options": req.options.dict(),
+    }
+
+    try:
+        async with session_lock(x_session_id):
+            result = await compute_essence_payload_v2(payload)
+        return JSONResponse(result)
+    except SessionBusyError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/compute-essence-v2-1")
+async def compute_essence_v21(
+    req: ComputeEssenceRequestV21,
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
+    """
+    V2.1 endpoint: V2 improvements + wordfreq filtering + tokenization invariance
+    - Filters candidates to common English words (wordfreq top 200k by default)
+    - Uses tokenization-invariant embeddings (average with/without leading space)
+    - Includes all v2 features (spherical averaging, per-group scoring, ABT)
+    """
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="Missing X-Session-ID header")
+
+    # Normalize requested models (max 3)
+    if req.model_ids is not None:
+        model_ids = req.model_ids
+    else:
+        model_ids = [req.model_id or DEFAULT_MODEL.id]
+
+    # Validate against allowed list
+    for mid in model_ids:
+        if mid not in ALLOWED_REGISTRY:
+             raise HTTPException(status_code=403, detail=f"Model '{mid}' is not available on this server.")
+
+    if len(model_ids) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 models per request")
+
+    # Build payload dict (Pydantic → dict)
+    payload = {
+        "model_ids": model_ids,
+        "groups": [g.dict() for g in req.groups],
+        "options": req.options.dict(),
+    }
+
+    try:
+        async with session_lock(x_session_id):
+            result = await compute_essence_payload_v21(payload)
+        return JSONResponse(result)
+    except SessionBusyError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/compute-essence-v2-2")
+async def compute_essence_v22(
+    req: ComputeEssenceRequestV22,
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
+    """
+    V2.2 endpoint: V2.1 + advanced quality improvements
+    - Robust group centers (trimmed mean to reduce outlier impact)
+    - Sense-aware reranking (uses WordNet glosses to disambiguate polysemy)
+    - Diagonal whitening (lightweight isotropy correction)
+    - Includes all v2.1 features (wordfreq filtering, tokenization invariance)
+    - Includes all v2 features (spherical averaging, per-group scoring, ABT)
+    """
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="Missing X-Session-ID header")
+
+    # Normalize requested models (max 3)
+    if req.model_ids is not None:
+        model_ids = req.model_ids
+    else:
+        model_ids = [req.model_id or DEFAULT_MODEL.id]
+
+    # Validate against allowed list
+    for mid in model_ids:
+        if mid not in ALLOWED_REGISTRY:
+             raise HTTPException(status_code=403, detail=f"Model '{mid}' is not available on this server.")
+
+    if len(model_ids) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 models per request")
+
+    # Build payload dict (Pydantic → dict)
+    payload = {
+        "model_ids": model_ids,
+        "groups": [g.dict() for g in req.groups],
+        "options": req.options.dict(),
+    }
+
+    try:
+        async with session_lock(x_session_id):
+            result = await compute_essence_payload_v22(payload)
         return JSONResponse(result)
     except SessionBusyError as e:
         raise HTTPException(status_code=429, detail=str(e))
